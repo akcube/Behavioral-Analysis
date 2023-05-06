@@ -1,0 +1,686 @@
+---
+title: "BRSM Project"
+author: "Team statStat: Prerak Srivastava, 
+        Kishore Kumar, 
+        Praneetha Gokul"
+date: "27/3/2023"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Introduction
+
+# Data Analysis
+
+## Importing Libraries and Data Preprocessing
+
+```{r}
+# import libraries
+library(readxl)
+library(ggplot2)
+library(car)
+library(ppcor)
+library(psych)
+library(reshape2)
+library(haven)
+library(dplyr)
+library(zoo)
+```
+
+```{r}
+data1 <- read_sav("data/EEfRT Data for OSF_Long.sav")
+data2 <- read_sav("data/EEfRT Data for OSF_Wide.sav")
+
+data <- full_join(data2, data1, by = "ID", copy = FALSE)
+summary(data)
+```
+
+```{r}
+#removed between subject rows
+new_data <- data %>% filter(ID == unique(data$ID))
+```
+
+```{r}
+#created array without NA values
+filtered_new_data <- na.omit(data$EEfRT_ProportionHardTasksSelected)
+
+#removed subject ID with NA values for the task and lifetime substance use
+data_update <- new_data[c(-42, -43, -44, -45, -46, -47), ]
+data_update <- subset(data_update, !(is.na(LifetimeSubstanceDisorder)))
+
+#assigned comorbid conditions as factored variables
+data_update$ComorbidAnxietyDisorder <- as.factor(
+    data_update$ComorbidAnxietyDisorder
+)
+data_update$LifetimeSubstanceDisorder <- as.factor(
+    data_update$LifetimeSubstanceDisorder
+)
+
+#SCID was used to assess comorbidity
+#There were only 2 factor levels for both comorbidities
+#(1 = no presence, 3 = presence)
+#These factor levels were assigned as (1 = 0, 3 = 1)
+levels(data_update$ComorbidAnxietyDisorder)
+levels(data_update$LifetimeSubstanceDisorder)
+levels(data_update$ComorbidAnxietyDisorder) <- c(0, 1)
+levels(data_update$LifetimeSubstanceDisorder) <- c(0, 1)
+```
+
+```{r}
+#Removed extra columns
+data_update <- subset(data_update, select = -c(7, 8, 39))
+
+#Renamed columns
+data_update <- data_update %>% rename(
+    Age = Age.y,
+    Gender = Gender.y
+)
+
+#converted to factored variable for analyses
+data_update$Gender <- as.factor(data_update$Gender)
+levels(data_update$Gender)
+```
+
+## Normality Tests
+
+```{r}
+shapiro.test(data_update$EEfRT_ProportionHardTasksSelected)
+shapiro.test(data_update$Reward_Level)
+shapiro.test(data_update$WASSUP_FinSuccess)
+shapiro.test(data_update$WASSUP_PopFame)
+```
+
+Plotting the data to visualize the normality/abnormality
+```{r}
+
+ggplot(data_update, aes(x = EEfRT_ProportionHardTasksSelected)) +
+  geom_histogram()
+ggplot(data_update, aes(x = Reward_Level)) +
+  geom_histogram()
+ggplot(data_update, aes(x = WASSUP_FinSuccess)) +
+  geom_histogram()
+ggplot(data_update, aes(x = WASSUP_PopFame)) +
+  geom_histogram()
+```
+
+```{r}
+# filter all the data from data_update where comorbid anxiety disorder is 1
+data_update_anxiety <- data_update[data_update$ComorbidAnxietyDisorder == 1, ]
+data_update_substance <- data_update[data_update$LifetimeSubstanceDisorder == 1, ]
+data_update_both <- data_update[data_update$ComorbidAnxietyDisorder == 1 &
+    data_update$LifetimeSubstanceDisorder == 1, ]
+data_update_neither <- data_update[data_update$ComorbidAnxietyDisorder == 0 &
+    data_update$LifetimeSubstanceDisorder == 0, ]
+```
+
+```{r}
+head(data_update_neither, 10)
+head(data_update_anxiety, 10)
+head(data_update_substance, 10)
+head(data_update_both, 10)
+```
+
+## Exploratory Correlation Tests
+
+```{r}
+#Correlation tests
+cor.test(
+    data_update$EEfRT_ProportionHardTasksSelected, data_update$Reward_Level
+)
+
+cor.test(
+    data_update$EEfRT_ProportionHardTasksSelected, data_update$LithiumDosage
+)
+
+cor.test(
+    data_update$EEfRT_ProportionHardTasksSelected, data_update$WASSUP_FinSuccess
+)
+
+cor.test(
+    data_update$EEfRT_ProportionHardTasksSelected, data_update$Age
+)
+
+cor.test(
+    data_update$EEfRT_ProportionHardTasksSelected,
+    as.numeric(data_update$Gender)
+)
+
+cor.test(
+    data_update$WASSUP_FinSuccess, data_update$WASSUP_PopFame
+)
+```
+
+## Correlation Heatmap
+
+## Correlation Heatmap
+
+```{r}
+# Removed the ID column
+data_update_1 <- data_update[, -1]
+
+# Converted all the NAs to -1
+data_update_1[is.na(data_update_1)] <- -1
+
+# Converted each element in the data frame to numeric
+data_update_1 <- as.data.frame(lapply(data_update_1, as.numeric))
+data_update_1 <- na.aggregate(data_update_1, FUN = median)
+
+cor_data <- cor(data_update_1)
+
+melt_data_update <- melt(cor_data, varnames = c("Variable1", "Variable2"))
+melt_data_update <- melt_data_update[order(-melt_data_update$value), ]
+```
+
+```{r}
+# Ploting heatmap with sorted variables
+ggplot(melt_data_update, aes(x = Variable1, y = Variable2)) +
+  geom_tile(aes(fill = value), color = "white") +
+  scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b",
+  midpoint = 0, na.value = "gray") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 5.5),
+    axis.text.y = element_text(angle = 0, hjust = 1, vjust = 0.5, size = 5.5),
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14)
+  ) +
+  labs(
+    x = "Variable",
+    y = "Variable",
+    fill = "Correlation"
+  )
+```
+
+None of the correlation tests were significant. Correlation between EEfRT proportion and Reward Level r =
+-0.056, p > .01 had a negative and weak relationship. Similarly, correlation between EEfRT proportion and
+Lithium Dosage r = -0.13, p > .01 had a negative and weak relationship. Additionally, correlation between
+EEfRT proportion and Age r = -0.137, p > .01 had a negative and weak relationship.
+
+## Exploratory T-tests
+
+```{r}
+#Independent sample t-tests
+t.test(EEfRT_ProportionHardTasksSelected ~ Gender, data_update)
+t.test(Reward_Level ~ Gender, data_update)
+
+#Independent sample t-tests of DVs with IV = Comorbid Anxiety Disorder
+t.test(EEfRT_ProportionHardTasksSelected ~ ComorbidAnxietyDisorder, data_update)
+t.test(WASSUP_PopFame ~ ComorbidAnxietyDisorder, data_update)
+t.test(WASSUP_FinSuccess ~ ComorbidAnxietyDisorder, data_update)
+
+#Independent sample t-tests of DVs with IV = Lifetime Substance use Disorder
+t.test(
+    EEfRT_ProportionHardTasksSelected ~ LifetimeSubstanceDisorder, data_update
+)
+t.test(WASSUP_PopFame ~ LifetimeSubstanceDisorder, data_update)
+t.test(WASSUP_FinSuccess ~ LifetimeSubstanceDisorder, data_update)
+```
+
+```{r}
+# create a data frame with the p-values of the t-tests
+p_values <- data.frame(
+  IV = c("Gender", "Gender", "Gender", "Gender",
+        "Comorbid Anxiety", "Comorbid Anxiety",
+        "Comorbid Anxiety", "Comorbid Anxiety", # nolint
+        "Lifetime Substance Use", "Lifetime Substance Use",
+        "Lifetime Substance Use", "Lifetime Substance Use",
+        "0.05", "0.05", "0.05", "0.05"
+    ), # nolint
+  DV = c("EEfRT", "Reward_Level", "WASSUP Fin", "WASSUP Pop",
+        "EEfRT", "WASSUP Pop", "WASSUP Fin", "Reward_Level", # nolint
+         "EEfRT", "WASSUP Pop", "WASSUP Fin", "Reward_Level",
+         "EEfRT", "WASSUP Pop", "WASSUP Fin", "Reward_Level"), # nolint
+  p_value = c(t.test(EEfRT_ProportionHardTasksSelected ~ Gender, data_update)$p.value, # nolint
+              t.test(Reward_Level ~ Gender, data_update)$p.value, # nolint
+              t.test(WASSUP_FinSuccess ~ Gender, data_update)$p.value, # nolint
+              t.test(WASSUP_PopFame ~ Gender, data_update)$p.value, # nolint
+              t.test(EEfRT_ProportionHardTasksSelected ~ ComorbidAnxietyDisorder, data_update)$p.value, # nolint
+              t.test(WASSUP_PopFame ~ ComorbidAnxietyDisorder, data_update)$p.value, # nolint
+              t.test(WASSUP_FinSuccess ~ ComorbidAnxietyDisorder, data_update)$p.value, # nolint
+              t.test(Reward_Level ~ ComorbidAnxietyDisorder, data_update)$p.value, # nolint
+              t.test(EEfRT_ProportionHardTasksSelected ~ LifetimeSubstanceDisorder, data_update)$p.value, # nolint
+              t.test(WASSUP_PopFame ~ LifetimeSubstanceDisorder, data_update)$p.value, # nolint
+              t.test(WASSUP_FinSuccess ~ LifetimeSubstanceDisorder, data_update)$p.value, # nolint
+              t.test(Reward_Level ~ LifetimeSubstanceDisorder, data_update)$p.value, # nolint
+              0.05, 0.05, 0.05, 0.05) # nolint
+)
+```
+
+```{r}
+ggplot(
+    p_values, aes(x = p_value, y = reorder(IV, p_value))) +
+    geom_point(aes(color = p_value), size = 3, alpha = 0.8) +
+    facet_wrap(~DV, nrow = 3, scales = "free_y") +
+    scale_color_gradient(low = "magenta", high = "purple") +
+    labs(
+        title = "Support for Null Hypothesis",
+        subtitle = "p-values for Independent Samples t-tests",
+        x = "p-value",
+        y = "Independent Variable"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(size = 8, angle = 23, hjust = 1)) +
+    geom_vline(xintercept = 0.05, color = "red", linetype = "dashed"
+)
+```
+
+None of the t-tests were significant. A t-test between EEfRT and Gender did not exhibit
+any significant difference between males (M = 0.582) and females (M = 0.476) on the EEfRT
+proportion t(30) = 1.33, p = 0.193. A t-test between Reward Level and Gender did not exhibit any
+significant difference between males (M =2.754) and females (M = 2.351) on the Reward level,
+t(34) = 1.508, p = 0.14.
+
+## ANOVA and Tukey HSD
+
+```{r}
+#Interaction between ComorbidAnxietyDisorder
+#and LifetimeSubstanceDisorder on EEfRT_ProportionHardTasksS
+model1 <- aov(
+    EEfRT_ProportionHardTasksSelected ~
+    ComorbidAnxietyDisorder * LifetimeSubstanceDisorder,
+    data = data_update
+)
+summary(model1)
+```
+
+```{r}
+TukeyHSD(model1)
+```
+
+```{r}
+#Interaction between ComorbidAnxietyDisorder
+# and LifetimeSubstanceDisorder on WASSUP_PopFame
+model2 <- aov(
+    WASSUP_PopFame ~ ComorbidAnxietyDisorder * LifetimeSubstanceDisorder,
+    data = data_update
+)
+summary(model2)
+```
+
+```{r}
+TukeyHSD(model2)
+```
+
+```{r}
+#Interaction between ComorbidAnxietyDisorder
+# and LifetimeSubstanceDisorder on WASSUP_FinSuccess
+model3 <- aov(
+    WASSUP_FinSuccess ~ ComorbidAnxietyDisorder * LifetimeSubstanceDisorder,
+    data = data_update
+)
+summary(model3)
+```
+
+```{r}
+TukeyHSD(model3)
+```
+
+## Linear Regression
+
+```{r}
+reg1.model <- lm(
+    EEfRT_ProportionHardTasksSelected ~
+    ComorbidAnxietyDisorder + WASSUP_FinSuccess,
+    data = data_update
+)
+
+summary(reg1.model)
+vif(reg1.model)
+ncvTest(reg1.model)
+plot(reg1.model)
+AIC(reg1.model)
+```
+
+```{r}
+reg3.model <- lm(
+    EEfRT_ProportionHardTasksSelected ~ WASSUP_FinSuccess + ComorbidAnxietyDisorder,
+    data = data_update
+)
+
+summary(reg3.model)
+vif(reg3.model)
+ncvTest(reg3.model)
+plot(reg3.model)
+AIC(reg3.model)
+```
+
+```{r}
+# BEST FIT MODEL
+reg.model4 <- lm(
+    EEfRT_ProportionHardTasksSelected ~ LifetimeSubstanceDisorder +
+    WASSUP_FinSuccess,
+    data = data_update_anxiety
+)
+
+summary(reg.model4)
+vif(reg.model4)
+ncvTest(reg.model4)
+plot(reg.model4)
+AIC(reg.model4)
+```
+
+```{r}
+reg.model15 <- lm(
+    EEfRT_ProportionHardTasksSelected ~ LifetimeSubstanceDisorder +
+    WASSUP_FinSuccess,
+    data = data_update
+)
+
+summary(reg.model15)
+vif(reg.model15)
+ncvTest(reg.model15)
+plot(reg.model15)
+AIC(reg.model15)
+```
+
+```{r}
+reg.model8 <- lm(
+    EEfRT_ProportionHardTasksSelected ~ LifetimeSubstanceDisorder + LithiumDosage +
+    WASSUP_FinSuccess,
+    data = data_update
+)
+
+summary(reg.model8)
+vif(reg.model8)
+ncvTest(reg.model8)
+plot(reg.model8)
+AIC(reg.model8)
+```
+
+## Best Fit Line (Replication of Paper)
+
+```{r}
+# plot the regression line between EEfRT and WASSUP_FinSuccess with the data points
+ggplot(data_update, aes(x = WASSUP_FinSuccess, y = EEfRT_ProportionHardTasksSelected)) +
+    geom_point() +
+    geom_smooth(method = "lm")
+```
+
+```{r}
+# plot the regression line between EEfRT and WASSUP_PopFame with the data points
+ggplot(data_update, aes(x = WASSUP_PopFame, y = EEfRT_ProportionHardTasksSelected)) +
+    geom_point() +
+    geom_smooth(method = "lm")
+```
+
+## Plots
+
+### Violin Plots
+
+```{r}
+# Boxplot
+# in the fill, replace 0 with No and yes with 1
+ggplot(
+        data_update,
+        aes(
+            x = ComorbidAnxietyDisorder,
+            y = EEfRT_ProportionHardTasksSelected,
+            fill = factor(LifetimeSubstanceDisorder)
+        )
+    ) +
+    geom_violin() +
+    theme_minimal() +
+    labs(
+        x = "Comorbid Anxiety Disorder",
+        y = "EEfRT Proportion Hard Tasks Selected",
+        fill = "Lifetime Substance Use Disorder"
+    ) +
+    scale_fill_discrete(
+        name = "Lifetime Substance Use Disorder",
+        labels = c("No Substance Use Disorder", "Substance Use Disorder")
+    )
+```
+
+```{r}
+ggplot(
+    data_update,
+    aes(
+        x = ComorbidAnxietyDisorder,
+        y = EEfRT_ProportionHardTasksSelected,
+        fill = ComorbidAnxietyDisorder
+    )
+) +
+    geom_violin()+
+    theme_bw() +
+    theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = "none") +
+    scale_fill_brewer(palette = "Paired") +
+    labs(title = "Comorbid Anxiety Disorder Proportion of
+    Hard Tasks Selected on EEfRT",
+    x = "Comorbid Anxiety Disorder",
+    y = "EEfRT proportion"
+)
+```
+
+```{r}
+ggplot(
+        data_update,
+        aes(
+            x = ComorbidAnxietyDisorder,
+            y = WASSUP_PopFame,
+            fill = ComorbidAnxietyDisorder
+        )
+    ) +
+    geom_violin() +
+    theme_bw() +
+    theme(
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "none"
+    ) +
+    scale_fill_brewer(palette = "Paired") +
+    labs(
+        title = "Comorbid Anxiety Disorder WASSUP Popularity Fame",
+        x = "Comorbid Anxiety Disorder",
+        y = "WASSUP Popularity Fame"
+    )
+```
+
+```{r}
+ggplot(
+        data_update,
+        aes(
+            x = ComorbidAnxietyDisorder,
+            y = WASSUP_FinSuccess,
+            fill = ComorbidAnxietyDisorder
+        )
+    ) +
+    geom_violin() +
+    theme_bw() +
+    theme(
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "none"
+    ) +
+    scale_fill_brewer(palette = "Paired") +
+    labs(
+        title = "Comorbid Anxiety Disorder WASSUP Financial Success",
+        x = "Comorbid Anxiety Disorder",
+        y = "WASSUP Financial Success"
+    )
+```
+
+```{r}
+ggplot(
+        data_update,
+        aes(
+            x = LifetimeSubstanceDisorder,
+            y = EEfRT_ProportionHardTasksSelected,
+            fill = LifetimeSubstanceDisorder
+        )
+    ) +
+    geom_violin() +
+    theme_bw() +
+    theme(
+        axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14)
+    ) +
+    labs(
+        x = "Lifetime Substance Use Disorder",
+        y = "EEfRT Proportion Hard Tasks Selected",
+        fill = "Lifetime Substance Use Disorder"
+    )
+```
+
+```{r}
+# plot between lifetime substance and fame
+ggplot(
+        data_update,
+        aes(
+            x = LifetimeSubstanceDisorder,
+            y = WASSUP_PopFame,
+            fill = LifetimeSubstanceDisorder
+        )
+    ) +
+    geom_violin() +
+    theme_bw() +
+    theme(
+        axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14)
+    ) +
+    labs(
+        x = "Lifetime Substance Use Disorder",
+        y = "WASSUP Popularity Fame",
+        fill = "Lifetime Substance Use Disorder"
+    )
+```
+
+```{r}
+# plot between life substance and financial success
+ggplot(
+        data_update,
+        aes(
+            x = LifetimeSubstanceDisorder,
+            y = WASSUP_FinSuccess,
+            fill = LifetimeSubstanceDisorder
+        )
+    ) +
+    geom_violin() +
+    theme_bw() +
+    theme(
+        axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14)
+    ) +
+    labs(
+        x = "Lifetime Substance Use Disorder",
+        y = "WASSUP Financial Success",
+        fill = "Lifetime Substance Use Disorder"
+    )
+```
+
+### Interaction Plots
+
+```{r}
+ggplot(
+    data_update,
+    aes(
+        x = ComorbidAnxietyDisorder,
+        y = EEfRT_ProportionHardTasksSelected,
+        color = factor(LifetimeSubstanceDisorder)
+    )
+) +
+  stat_summary(
+    fun = mean,
+    geom = "point", size = 3, shape = 21, fill = "white") +
+    stat_summary(
+        fun = mean,
+        geom="line",
+        size = 0.5,
+        aes(group = factor(LifetimeSubstanceDisorder))
+    ) +
+    stat_summary(
+        fun.data = mean_cl_normal,
+        geom = "errorbar", width = 0.2
+    ) +
+    labs(
+        x = "Comorbid Anxiety",
+        y = "EEfRT proportion",
+        color = "Lifetime Substance Use Disorder"
+    ) +
+    scale_color_manual(
+        values = c("red", "green"),
+        name = "Lifetime Substance Use Disorder",
+        labels = c("No", "Yes")
+    ) +
+    ggtitle("Interaction effect between Comorbid Anxiety and
+            Lifetime Substance Use on EEfRT task proportion") +
+    theme_minimal() +
+    theme(plot.title = element_text(size=14, face="bold")) +
+    theme(
+        legend.position = "bottom",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 8)
+    )
+```
+
+```{r}
+# Plot interaction effect of between
+# Comorbid Anxiety and Lifetime Substance Use on WASSUP Popular Fame Scale
+ggplot(
+    data_update,
+    aes(x = ComorbidAnxietyDisorder, y = WASSUP_PopFame,
+    color = factor(LifetimeSubstanceDisorder))) +
+    stat_summary(fun = mean, geom = "point", size = 3,
+    shape = 21, fill = "white") +
+  stat_summary(fun = mean, geom="line", size = 0.5,
+  aes(group = factor(LifetimeSubstanceDisorder))) +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar",
+  width = 0.2) +
+  labs(x = "Comorbid Anxiety", y = "WASSUP_PopFame",
+  color = "Lifetime Substance Use Disorder") +
+  ggtitle("Interaction effect between Comorbid Anxiety
+  and Lifetime Substance Use on WASSUP PopFame Scale") +
+  scale_color_manual(values = c("red", "green"),
+  name = "Lifetime Substance Use Disorder", labels = c("No", "Yes")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 14,
+  face = "bold")) +
+  theme(legend.position = "bottom",
+  legend.title = element_text(size = 10),
+  legend.text = element_text(size = 8))
+```
+
+```{r}
+ggplot(data_update, aes(x = ComorbidAnxietyDisorder,
+y = WASSUP_FinSuccess, color = factor(LifetimeSubstanceDisorder))) +
+  stat_summary(fun = mean, geom = "point", size = 3,
+  shape = 21, fill = "white") +
+  stat_summary(fun=mean, geom="line", size=0.5,
+  aes(group = factor(LifetimeSubstanceDisorder))) +
+  stat_summary(fun.data = mean_cl_normal,
+  geom = "errorbar", width = 0.2) +
+  labs(x = "Comorbid Anxiety", y = "WASSUP_FinSuccess",
+  color = "Lifetime Substance Use Disorder") +
+  scale_color_manual(values = c("red", "green"),
+  name = "Lifetime Substance Use Disorder", labels = c("No", "Yes")) +
+  ggtitle("Interaction effect between Comorbid Anxiety
+  and Lifetime Substance Use on WASSUP FinSuccess Scale") +
+  theme_minimal() +
+  theme(plot.title = element_text(size=14, face="bold")) +
+  theme(legend.position = "bottom",
+  legend.title = element_text(size = 10), legend.text = element_text(size = 8))
+```
